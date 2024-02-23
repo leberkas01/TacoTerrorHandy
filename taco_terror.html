@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Taco Terror</title>
+<style>
+    canvas {
+        border: 1px solid black;
+        display: block;
+        margin: 0 auto;
+        background-image: url('spielfeld.png'); /* Hintergrundbild des Spielfelds */
+        background-size: cover;
+    }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="600" height="800"></canvas>
+
+<script>
+    // Definiere das Spiel
+    const game = {
+        canvas: document.getElementById("gameCanvas"),
+        ctx: null,
+        tacos: [],
+        tacoSpeed: 0.25, // Grundgeschwindigkeit der Tacos (50% langsamer)
+        tacoSpawnRate: 100, // Grundrate, mit der Tacos erscheinen
+        tacoSpawnTimer: 0,
+        player: {
+            x: 275, // Horizontal in der Mitte des Spielfelds
+            y: 375, // Vertikal in der Mitte des Spielfelds
+            width: 50,
+            height: 50,
+            lives: 10,
+            image: "spieler.png", // Grafik für den Spieler
+            weapon: {
+                bullets: [],
+                color: "#888888", // Farbe für den Schuss
+                size: 20 // Größe des Schusses (Quadrat)
+            }
+        },
+        level: 1,
+        maxLevels: 10,
+        remainingTacos: 100 // Anfangsanzahl der Tacos
+    };
+
+    // Initialisierung des Spiels
+    function init() {
+        game.ctx = game.canvas.getContext("2d");
+        game.canvas.addEventListener("click", shoot);
+        loadImages();
+    }
+
+    // Bilder laden
+    const images = {};
+    const imageNames = ["spieler.png", "taco.png"]; // Grafiken für Spieler und Tacos
+
+    function loadImages() {
+        let imagesLoaded = 0;
+        imageNames.forEach(name => {
+            const img = new Image();
+            img.onload = () => {
+                images[name] = img;
+                imagesLoaded++;
+                if (imagesLoaded === imageNames.length) {
+                    loop();
+                }
+            };
+            img.src = name;
+        });
+    }
+
+    // Spiel-Update
+    function update() {
+        // Bewege Tacos
+        for (let i = 0; i < game.tacos.length; i++) {
+            const taco = game.tacos[i];
+            const deltaX = game.player.x - taco.x;
+            const deltaY = game.player.y - taco.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const directionX = deltaX / distance;
+            const directionY = deltaY / distance;
+            taco.x += directionX * (game.tacoSpeed + (game.level * 0.05)); // Geschwindigkeit erhöht sich mit jedem Level um 5%
+            taco.y += directionY * (game.tacoSpeed + (game.level * 0.05)); // Geschwindigkeit erhöht sich mit jedem Level um 5%
+
+            // Kollision mit dem Spieler überprüfen
+            if (checkCollision(game.player, taco)) {
+                game.player.lives--; // Leben am Spieler abziehen
+                game.tacos.splice(i, 1); // Entferne den Taco
+                if (game.player.lives <= 0) {
+                    alert("Game Over! Taco Terror has won!");
+                    location.reload(); // Neustart des Spiels
+                }
+            }
+        }
+        // Tacos spawnen
+        game.tacoSpawnTimer++;
+        if (game.tacoSpawnTimer === (game.tacoSpawnRate - (game.level * 0.1 * game.tacoSpawnRate))) { // 10% mehr Tacos pro Level
+            // Zufällige Position für Tacos
+            const x = Math.random() * (game.canvas.width - 50);
+            const y = Math.random() * (game.canvas.height - 50);
+            game.tacos.push({ x, y, width: 50, height: 50 });
+            game.tacoSpawnTimer = 0;
+        }
+        // Bewege und entferne Schüsse
+        game.player.weapon.bullets.forEach(bullet => {
+            bullet.x += bullet.speedX;
+            bullet.y += bullet.speedY;
+            if (bullet.y < 0 || bullet.y > game.canvas.height || bullet.x < 0 || bullet.x > game.canvas.width) {
+                game.player.weapon.bullets.splice(game.player.weapon.bullets.indexOf(bullet), 1);
+            }
+            // Überprüfe Kollision mit Tacos
+            for (let i = 0; i < game.tacos.length; i++) {
+                const taco = game.tacos[i];
+                if (checkCollision(bullet, taco)) {
+                    game.tacos.splice(i, 1); // Entferne den Taco
+                    game.player.weapon.bullets.splice(game.player.weapon.bullets.indexOf(bullet), 1); // Entferne den Schuss
+                    game.remainingTacos--; // Reduziere die Anzahl der verbleibenden Tacos
+                    break; // Beende die Schleife, um Kollisionen mit weiteren Tacos zu vermeiden
+                }
+            }
+        });
+        // Wenn alle Tacos besiegt wurden, erhöhe das Level
+        if (game.remainingTacos === 0) {
+            game.level++;
+            game.player.lives = 10; // Setze die Leben wieder auf 10
+            if (game.level <= game.maxLevels) {
+                game.remainingTacos = Math.round(game.remainingTacos * 1.1); // Erhöhe die Anzahl der Tacos um 10%
+            }
+            else {
+                alert("Congratulations! You've done it! You#ve stopped the taco cartel!");
+                location.reload(); // Neustart des Spiels
+            }
+        }
+    }
+
+    // Überprüfe Kollision zwischen zwei Objekten
+    function checkCollision(obj1, obj2) {
+        return obj1.x < obj2.x + obj2.width &&
+               obj1.x + obj1.width > obj2.x &&
+               obj1.y < obj2.y + obj2.height &&
+               obj1.y + obj1.height > obj2.y;
+    }
+
+    // Schießen
+    function shoot(event) {
+        const bulletSpeed = 5;
+        const mouseX = event.clientX - game.canvas.offsetLeft;
+        const mouseY = event.clientY - game.canvas.offsetTop;
+        const angle = Math.atan2(mouseY - game.player.y, mouseX - game.player.x);
+        const speedX = bulletSpeed * Math.cos(angle);
+        const speedY = bulletSpeed * Math.sin(angle);
+        const bullet = {
+            x: game.player.x + game.player.width / 2,
+            y: game.player.y + game.player.height / 2,
+            width: game.player.weapon.size,   // Breite des Schusses (Quadrat)
+            height: game.player.weapon.size,  // Höhe des Schusses (Quadrat)
+            speedX,
+            speedY
+        };
+        game.player.weapon.bullets.push(bullet);
+    }
+
+    // Spiel-Loop
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    // Spiel zeichnen
+    function draw() {
+        game.ctx.clearRect(0, 0, game.canvas.width, game.canvas.height); // Hintergrund löschen
+        game.ctx.drawImage(images[game.player.image], game.player.x, game.player.y, game.player.width, game.player.height); // Spieler zeichnen
+        game.tacos.forEach(taco => game.ctx.drawImage(images["taco.png"], taco.x, taco.y, taco.width, taco.height)); // Tacos zeichnen
+        // Schüsse zeichnen
+        game.player.weapon.bullets.forEach(bullet => {
+            game.ctx.fillStyle = game.player.weapon.color;
+            game.ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+        });
+        // Lebensanzeige zeichnen
+        for (let i = 0; i < game.player.lives; i++) {
+            game.ctx.fillStyle = "red";
+            game.ctx.fillRect(10 + i * 25, 10, 20, 20);
+        }
+        // Anzahl der verbleibenden Tacos anzeigen
+        game.ctx.fillStyle = "black";
+        game.ctx.font = "20px Arial";
+        game.ctx.fillText("Remaining Tacos: " + game.remainingTacos, 10, game.canvas.height - 10);
+    }
+
+    // Spiel starten
+    init();
+</script>
+</body>
+</html>
